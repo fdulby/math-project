@@ -167,34 +167,44 @@ def evaluate_route(route: List[int], distance_matrix: np.ndarray, project_info: 
             'feasible': True, 'timeline_log': [], 'route': route
         }
     
+    # 记录实际访问的项目
+    visited_projects = []
+
     for next_node in route:
         if next_node not in project_info:
             continue
-        
+
         p_info = project_info[next_node]
         walk_time = dist_matrix[current_node, next_node]
         arrive_time = current_time + walk_time
+
+        # 关键修改1：如果在路上就已经超过闭园时间，直接终止
+        if arrive_time >= CONFIG.PARK_CLOSE_TIME:
+            # print(f"  [提前终止] 前往 {p_info['name']} 的路上已超过闭园时间 ({arrive_time:.1f} >= {CONFIG.PARK_CLOSE_TIME})")
+            break
+
         total_walk_time += walk_time
-        
+
         name = p_info['name']
         node_type = p_info['type']
         play_duration = p_info['duration']
         utility_score = p_info['utility']
         time_window_start, time_window_end = p_info['time_window']
-        
+
         wait_time = 0.0
         queue_time = 0.0
         gained_utility = 0.0
         status = 'completed'
-        leave_time = arrive_time  # 初始化leave_time
-        
+        leave_time = arrive_time
+
         # 检查项目是否开放
         if arrive_time < time_window_start:
             wait_time = time_window_start - arrive_time
             total_wait_time += wait_time
             arrive_time = time_window_start
             status = 'waited_for_open'
-        
+
+        # 检查是否错过项目（但不终止循环，继续尝试下一个）
         if arrive_time > time_window_end:
             if node_type == 'show':
                 missed_shows += 1
@@ -205,6 +215,7 @@ def evaluate_route(route: List[int], distance_matrix: np.ndarray, project_info: 
             leave_time = arrive_time
             gained_utility = 0.0
         else:
+            # 项目开放中，计算游玩时间
             if node_type == 'show':
                 wait_time += max(0.0, time_window_start - arrive_time)
                 total_wait_time += max(0.0, time_window_start - arrive_time)
@@ -217,45 +228,81 @@ def evaluate_route(route: List[int], distance_matrix: np.ndarray, project_info: 
                 actual_start = arrive_time + queue_time
                 leave_time = actual_start + play_duration
                 gained_utility = utility_score
-        
+
+        # 关键修改2：如果游玩结束后超过闭园时间，记录但终止循环
         if leave_time > CONFIG.PARK_CLOSE_TIME:
-            overtime = max(overtime, leave_time - CONFIG.PARK_CLOSE_TIME)
+            overtime = leave_time - CONFIG.PARK_CLOSE_TIME
             feasible = False
-        
+            # print(f"  [提前终止] {name} 游玩结束时超过闭园时间 ({leave_time:.1f} > {CONFIG.PARK_CLOSE_TIME})")
+
+            # 记录这个项目（虽然超时但已经玩了）
+            total_utility += gained_utility
+            timeline_log.append({
+                '项目': name, '到达': round(arrive_time, 1), '排队': round(queue_time, 1),
+                '等待': round(wait_time, 1), '离开': round(leave_time, 1),
+                '效用': round(gained_utility, 2), '状态': status + '_overtime'
+            })
+            visited_projects.append(next_node)
+            current_time = leave_time
+            current_node = next_node
+            break  # 终止循环，不再访问后续项目
+
+        # 正常完成项目
         total_utility += gained_utility
-        
         timeline_log.append({
             '项目': name, '到达': round(arrive_time, 1), '排队': round(queue_time, 1),
-            '等待': round(wait_time, 1), '离开': round(leave_time, 1), 
+            '等待': round(wait_time, 1), '离开': round(leave_time, 1),
             '效用': round(gained_utility, 2), '状态': status
         })
-        
+
+        visited_projects.append(next_node)
         current_time = leave_time
         current_node = next_node
     
+    # 返回终点（只有在没超时的情况下才考虑返回）
     if return_to_end and end_node is not None and current_node != end_node:
         walk_time = dist_matrix[current_node, end_node]
-        current_time += walk_time
-        total_walk_time += walk_time
-    
+        # 检查返回路上是否超时
+        if current_time + walk_time <= CONFIG.PARK_CLOSE_TIME:
+            current_time += walk_time
+            total_walk_time += walk_time
+        else:
+            # 返回路上超时，不返回了
+            pass
+
+    # 计算综合得分（关键修改：移除对未访问项目的惩罚）
     time_cost = (CONFIG.WEIGHT_QUEUE_TIME * total_queue_time +
                 CONFIG.WEIGHT_WAIT_TIME * total_wait_time +
                 CONFIG.WEIGHT_WALK_TIME * total_walk_time)
+
+    # 超时惩罚：只对实际超时的情况惩罚，且惩罚减轻
     overtime_penalty = CONFIG.WEIGHT_OVERTIME * (overtime ** 2) if overtime > 0 else 0
+
+    # 错过项目惩罚：只对实际尝试但错过的项目惩罚（不包括未访问的项目）
+    # 注意：这里的missed_shows和closed_projects只统计了实际到达但无法游玩的项目
     missed_penalty = CONFIG.WEIGHT_MISSED_SHOW * (missed_shows + closed_projects)
-    
-    project_types = [project_info[node]['type'] for node in route if node in project_info]
-    diversity_bonus = CONFIG.WEIGHT_DIVERSITY * len(set(project_types))
-    
+
+    # 多样性奖励：基于实际访问的项目
+    visited_types = [project_info[node]['type'] for node in visited_projects if node in project_info]
+    diversity_bonus = CONFIG.WEIGHT_DIVERSITY * len(set(visited_types)) if visited_types else 0
+
     final_score = total_utility - time_cost - overtime_penalty - missed_penalty + diversity_bonus
-    
+
     return {
-        'final_score': round(final_score, 2), 'total_utility': round(total_utility, 2),
+        'final_score': round(final_score, 2),
+        'total_utility': round(total_utility, 2),
         'total_time': round(current_time - start_time, 1),
-        'total_queue': round(total_queue_time, 1), 'total_wait': round(total_wait_time, 1),
-        'total_walk': round(total_walk_time, 1), 'missed_shows': missed_shows,
-        'closed_projects': closed_projects, 'overtime': round(overtime, 1),
-        'feasible': feasible, 'timeline_log': timeline_log, 'route': route
+        'total_queue': round(total_queue_time, 1),
+        'total_wait': round(total_wait_time, 1),
+        'total_walk': round(total_walk_time, 1),
+        'missed_shows': missed_shows,
+        'closed_projects': closed_projects,
+        'overtime': round(overtime, 1),
+        'feasible': feasible,
+        'timeline_log': timeline_log,
+        'route': route,
+        'visited_projects': visited_projects,  # 新增：实际访问的项目列表
+        'visited_count': len(visited_projects)  # 新增：实际访问的项目数量
     }
 
 
@@ -390,26 +437,31 @@ def main():
     print("\n" + "=" * 70)
     print("第三部分：结果展示与可视化")
     print("=" * 70 + "\n")
-    
+
     print(f"【综合得分】 {best_result['final_score']:.2f}")
     print(f"【总效用】 {best_result['total_utility']:.2f}")
-    print(f"【总耗时】 {best_result['total_time']:.1f}分钟")
+    print(f"【实际访问】 {best_result['visited_count']}/{len(project_ids)} 个项目")
+    print(f"【总耗时】 {best_result['total_time']:.1f}分钟 ({best_result['total_time']/60:.1f}小时)")
     print(f"【排队时间】 {best_result['total_queue']:.1f}分钟")
     print(f"【等待时间】 {best_result['total_wait']:.1f}分钟")
     print(f"【步行时间】 {best_result['total_walk']:.1f}分钟")
     print(f"【错过演出】 {best_result['missed_shows']}场")
     print(f"【关闭项目】 {best_result['closed_projects']}个")
+    print(f"【超时情况】 {best_result['overtime']:.1f}分钟")
     print(f"【可行性】 {'是' if best_result['feasible'] else '否'}\n")
-    
-    print("【推荐路线】")
-    for i, proj_id in enumerate(best_route[:10], 1):
+
+    print("【推荐路线】（按访问顺序）")
+    visited = best_result['visited_projects']
+    for i, proj_id in enumerate(visited, 1):
         print(f"  {i}. {project_info[proj_id]['name']}")
-    if len(best_route) > 10:
-        print(f"  ... (共{len(best_route)}个项目)")
-    
+
+    if len(visited) < len(best_route):
+        print(f"\n  注：原计划{len(best_route)}个项目，实际完成{len(visited)}个")
+        print(f"      未访问的项目：{len(best_route) - len(visited)}个（因闭园时间限制）")
+
     print("\n【详细时间线】")
     df_timeline = pd.DataFrame(best_result['timeline_log'])
-    print(df_timeline.head(10).to_string(index=False))
+    print(df_timeline.to_string(index=False))
     if len(df_timeline) > 10:
         print(f"... (共{len(df_timeline)}条记录)")
     
