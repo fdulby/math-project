@@ -23,7 +23,7 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 
 class CONFIG:
     """全局配置类"""
-    ALGORITHM = 1  # 0=遗传, 1=模拟退火, 2=蚁群
+    ALGORITHM = 0  # 0=遗传, 1=模拟退火, 2=蚁群
     
     CROWD_WEIGHTS = {
         '普通': [0.25, 0.25, 0.25, 0.25],
