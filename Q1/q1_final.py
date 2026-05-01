@@ -46,14 +46,30 @@ class CONFIG:
     PARK_OPEN_TIME = 0
     PARK_CLOSE_TIME = 720  # 12小时
     START_TIME = 0
-    
+
+    # 模拟退火参数
     SA_INITIAL_TEMP = 1000
     SA_COOLING_RATE = 0.995
     SA_MAX_ITERATIONS = 5000
-    
+
+    # 遗传算法参数
+    GA_POPULATION_SIZE = 100
+    GA_GENERATIONS = 200
+    GA_CROSSOVER_RATE = 0.8
+    GA_MUTATION_RATE = 0.2
+    GA_ELITE_SIZE = 10
+
+    # 蚁群算法参数
+    ACO_ANT_COUNT = 50
+    ACO_ITERATIONS = 100
+    ACO_ALPHA = 1.0
+    ACO_BETA = 2.0
+    ACO_RHO = 0.5
+    ACO_Q = 100
+
     FIGURE_DPI = 100
     FIGURE_SIZE = (12, 8)
-    
+
     # 路径配置
     DATA_DIR = '../data'
     OUTPUT_DIR = '../Q1-test'
