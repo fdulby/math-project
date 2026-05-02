@@ -12,6 +12,7 @@ import os
 from typing import Dict, List, Tuple, Optional
 import warnings
 warnings.filterwarnings('ignore')
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 matplotlib.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'STHeiti']
 matplotlib.rcParams['axes.unicode_minus'] = False
@@ -70,9 +71,9 @@ class CONFIG:
     FIGURE_DPI = 100
     FIGURE_SIZE = (12, 8)
 
-    # 路径配置
-    DATA_DIR = '../data'
-    OUTPUT_DIR = '../Q1-test'
+    # 路径配置（基于脚本所在目录的绝对路径）
+    DATA_DIR = os.path.join(SCRIPT_DIR, 'data')
+    OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'Q1-test')
 
 
 # ==========================================
