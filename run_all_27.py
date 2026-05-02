@@ -9,7 +9,7 @@ import os
 
 if __name__ == "__main__":
     project_root = os.path.dirname(os.path.abspath(__file__))
-    batch_script = os.path.join(project_root, 'Q1', 'q1_batch_run_all.py')
+    batch_script = os.path.join(project_root, 'q1_batch_run_all.py')
     
     if not os.path.exists(batch_script):
         print(f"错误：找不到 {batch_script}")
