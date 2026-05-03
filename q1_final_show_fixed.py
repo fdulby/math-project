@@ -75,6 +75,16 @@ class CONFIG:
     DATA_DIR = os.path.join(SCRIPT_DIR, 'data')
     OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'Q1-test')
 
+    START_NODE = 0
+    END_NODE = 27
+
+    # 若需输出“总步行距离/m”，需把步行时间换算为距离
+    # 这里取园区平均步速 70 m/min，可按需要调整
+    WALK_SPEED_M_PER_MIN = 80.0
+
+    # 用于把相对分钟转换成实际结束时刻（例如 09:00 开园）
+    DISPLAY_OPEN_CLOCK_MIN = 9 * 60
+
 
 # ==========================================
 # 第一部分：数据读取与可视化
@@ -108,7 +118,7 @@ def load_projects_from_csv(csv_file: str) -> Tuple[Dict, pd.DataFrame]:
             info['time_window'] = (CONFIG.PARK_OPEN_TIME, CONFIG.PARK_CLOSE_TIME)
         
         # 动态排队参数（仅普通项目，入口除外）
-        if info['type'] == 'normal' and proj_id != 0:
+        if info['type'] == 'normal' and proj_id not in [CONFIG.START_NODE, CONFIG.END_NODE]:
             info['base_q'] = float(row['基础排队'])
             peaks = []
             if pd.notna(row['峰值1强度']):
@@ -223,7 +233,7 @@ def calculate_utility_scores(project_info: Dict, crowd_type: str = '普通') -> 
     """计算效用得分"""
     w = np.array(CONFIG.CROWD_WEIGHTS[crowd_type])
     for proj_id, info in project_info.items():
-        if proj_id == 0:  # 入口不计算效用
+        if proj_id in [CONFIG.START_NODE, CONFIG.END_NODE]:  # 入口不计算效用
             info['utility'] = 0.0
             continue
         features = np.array(info['features'])
@@ -630,20 +640,20 @@ def main():
     # 调整排队参数
     multiplier = CONFIG.DATE_QUEUE_MULTIPLIER[selected_date]
     for proj_id, info in project_info.items():
-        if info['type'] == 'normal' and proj_id != 0:
+        if info['type'] == 'normal' and proj_id not in [CONFIG.START_NODE, CONFIG.END_NODE]:
             info['base_q'] *= multiplier
             info['peaks'] = [(A * multiplier, mu, sigma) for A, mu, sigma in info['peaks']]
     
     # 项目列表（排除入口0）
-    project_ids = [pid for pid in project_info.keys() if pid != 0]
+    project_ids = [pid for pid in project_info.keys() if pid not in [CONFIG.START_NODE, CONFIG.END_NODE]]
     
     # 运行优化（起点和终点都是0=米奇大街）
     best_route, best_result = simulated_annealing(
         project_ids=project_ids,
         distance_matrix=distance_matrix,
         project_info=project_info,
-        start_node=0,  # 米奇大街（入口）
-        end_node=0,    # 米奇大街（出口）
+        start_node=CONFIG.START_NODE,
+        end_node=CONFIG.END_NODE,
         return_to_end=True
     )
     

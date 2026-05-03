@@ -197,6 +197,17 @@ def ant_colony_optimization(project_ids: List[int], distance_matrix: np.ndarray,
     best_result = evaluate_route(best_route, distance_matrix, project_info, **kwargs)
     return best_route, best_result
 
+def format_end_time(total_time_min: float) -> str:
+    """把在园总时长转换成实际结束时刻（默认 09:00 开园）"""
+    end_clock_min = CONFIG.DISPLAY_OPEN_CLOCK_MIN + total_time_min
+    hh = int(end_clock_min // 60)
+    mm = int(round(end_clock_min % 60))
+    return f"{hh:02d}:{mm:02d}"
+
+
+def estimate_walk_distance(total_walk_min: float) -> float:
+    """由总步行时间估算总步行距离（米）"""
+    return round(total_walk_min * CONFIG.WALK_SPEED_M_PER_MIN, 1)
 
 def run_single_case(crowd_type: str, date_type: str, algorithm_name: str,
                    project_info: Dict, distance_matrix: np.ndarray,
@@ -209,26 +220,26 @@ def run_single_case(crowd_type: str, date_type: str, algorithm_name: str,
 
     multiplier = CONFIG.DATE_QUEUE_MULTIPLIER[date_type]
     for proj_id, info in project_info_copy.items():
-        if info['type'] == 'normal' and proj_id != 0:
+        if info['type'] == 'normal' and proj_id not in [CONFIG.START_NODE, CONFIG.END_NODE]:
             info['base_q'] *= multiplier
             info['peaks'] = [(A * multiplier, mu, sigma) for A, mu, sigma in info['peaks']]
 
-    project_ids = [pid for pid in project_info_copy.keys() if pid != 0]
+    project_ids = [pid for pid in project_info_copy.keys() if pid not in [CONFIG.START_NODE, CONFIG.END_NODE]]
 
     if algorithm_name == '模拟退火':
         best_route, best_result = simulated_annealing(
             project_ids, distance_matrix, project_info_copy,
-            start_node=0, end_node=0, return_to_end=True
+            start_node=CONFIG.START_NODE, end_node=CONFIG.END_NODE, return_to_end=True
         )
     elif algorithm_name == '遗传算法':
         best_route, best_result = genetic_algorithm(
             project_ids, distance_matrix, project_info_copy,
-            start_node=0, end_node=0, return_to_end=True
+            start_node=CONFIG.START_NODE, end_node=CONFIG.END_NODE, return_to_end=True
         )
     else:
         best_route, best_result = ant_colony_optimization(
             project_ids, distance_matrix, project_info_copy,
-            start_node=0, end_node=0, return_to_end=True
+            start_node=CONFIG.START_NODE, end_node=CONFIG.END_NODE, return_to_end=True
         )
 
     play_time = sum([project_info_copy[pid]['duration'] for pid in best_result['visited_projects']])
@@ -253,6 +264,8 @@ def run_single_case(crowd_type: str, date_type: str, algorithm_name: str,
         'algorithm': algorithm_name,
         'crowd_type': crowd_type,
         'date_type': date_type,
+
+        # 原始字段
         'score': best_result['final_score'],
         'utility': best_result['total_utility'],
         'visited_count': best_result['visited_count'],
@@ -260,6 +273,18 @@ def run_single_case(crowd_type: str, date_type: str, algorithm_name: str,
         'play_time': play_time,
         'queue_time': best_result['total_queue'],
         'walk_time': best_result['total_walk'],
+        'wait_time': best_result['total_wait'],
+
+        # 论文表需要的字段
+        'project_count': best_result['visited_count'],
+        'walk_distance_m': estimate_walk_distance(best_result['total_walk']),
+        'walk_and_wait_time': round(best_result['total_walk'] + best_result['total_wait'], 1),
+        'queue_time_min': best_result['total_queue'],
+        'play_time_min': play_time,
+        'in_park_time_min': best_result['total_time'],
+        'net_utility': best_result['final_score'],
+        'end_clock': format_end_time(best_result['total_time']),
+
         'route': [project_info_copy[pid]['name'] for pid in visited]
     }
 
@@ -467,6 +492,22 @@ def main():
         csv_path = os.path.join(algo_dir, f'Q1-汇总结果-{algorithm}.csv')
         df_algo.to_csv(csv_path, index=False, encoding='utf-8-sig')
         print(f"\n✓ {algorithm} 汇总表格已保存: {csv_path}")
+
+        df_paper = pd.DataFrame(algo_results)
+        df_paper = df_paper[
+            ['crowd_type', 'date_type', 'project_count', 'walk_distance_m',
+             'walk_and_wait_time', 'queue_time_min', 'play_time_min',
+             'in_park_time_min', 'net_utility', 'end_clock']
+        ]
+        df_paper.columns = [
+            '游客类型', '日期情景', '项目数量', '总步行距离/m',
+            '总步行及候场时间/min', '总排队时间/min', '总游玩时间/min',
+            '总在园时间/min', '综合净效用', '结束时刻'
+        ]
+
+        paper_csv_path = os.path.join(algo_dir, f'Q1-论文汇总表-{algorithm}.csv')
+        df_paper.to_csv(paper_csv_path, index=False, encoding='utf-8-sig')
+        print(f"✓ {algorithm} 论文版汇总表已保存: {paper_csv_path}")
 
         generate_comparison_charts(df_algo, algo_dir)
         print(f"✓ {algorithm} 对比图已生成")
