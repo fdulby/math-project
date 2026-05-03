@@ -697,9 +697,46 @@ def main():
                                  selected_crowd, selected_date, route_map_path)
     
     print("\n" + "=" * 70)
+    # 保存最优路径供Q2使用
+    algorithm_names = ['遗传算法', '模拟退火', '蚁群算法']
+    save_optimal_route(best_route, selected_date, selected_crowd,
+                      algorithm_names[CONFIG.ALGORITHM], CONFIG.OUTPUT_DIR)
     print("✓ 优化完成！所有结果已保存到 Q1-test 文件夹")
     print("=" * 70)
 
 
+
+def save_optimal_route(route: List[int], scenario: str, crowd_type: str, 
+                      algorithm: str, output_dir: str):
+    """
+    保存最优路径供Q2使用
+    
+    保存格式：JSON（便于跨语言读取）
+    保存位置：Q1-test/routes/route_{algorithm}_{scenario}_{crowd_type}.json
+    """
+    import json
+    
+    routes_dir = os.path.join(output_dir, 'routes')
+    os.makedirs(routes_dir, exist_ok=True)
+    
+    filename = f"route_{algorithm}_{scenario}_{crowd_type}.json"
+    filepath = os.path.join(routes_dir, filename)
+    
+    # 保存为JSON格式
+    route_data = {
+        'algorithm': algorithm,
+        'scenario': scenario,
+        'crowd_type': crowd_type,
+        'route': route,
+        'route_length': len(route)
+    }
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(route_data, f, ensure_ascii=False, indent=2)
+    
+    print(f"✓ 最优路径已保存: {filepath}")
+
 if __name__ == "__main__":
     main()
+
+
