@@ -37,8 +37,8 @@ class CONFIG:
     GMM_PEAK_INTENSITY_SCALE = 1.0
     GMM_PEAK_WIDTH_SCALE = 1.0
     
-    WEIGHT_QUEUE_TIME = 0.1
-    WEIGHT_WAIT_TIME = 0.1
+    WEIGHT_QUEUE_TIME = 0.2
+    WEIGHT_WAIT_TIME = 0.2
     WEIGHT_WALK_TIME = 0.1
     WEIGHT_OVERTIME = 5.0
     WEIGHT_MISSED_SHOW = 1000.0
@@ -431,9 +431,13 @@ def evaluate_route(route: List[int], distance_matrix: np.ndarray, project_info: 
     }
 
 
-def simulated_annealing(project_ids: List[int], distance_matrix: np.ndarray, 
+def simulated_annealing(project_ids: List[int], distance_matrix: np.ndarray,
                        project_info: Dict, **kwargs) -> Tuple[List[int], Dict]:
-    """模拟退火算法"""
+    """模拟退火算法（固定随机种子以保证结果可复现）"""
+    # 固定随机种子，确保每次运行结果一致
+    random.seed(42)
+    np.random.seed(42)
+
     current_route = random.sample(project_ids, len(project_ids))
     current_result = evaluate_route(current_route, distance_matrix, project_info, **kwargs)
     current_score = current_result['final_score']
@@ -699,42 +703,52 @@ def main():
     print("\n" + "=" * 70)
     # 保存最优路径供Q2使用
     algorithm_names = ['遗传算法', '模拟退火', '蚁群算法']
-    save_optimal_route(best_route, selected_date, selected_crowd,
+    save_optimal_route(best_route, best_result, selected_date, selected_crowd,
                       algorithm_names[CONFIG.ALGORITHM], CONFIG.OUTPUT_DIR)
     print("✓ 优化完成！所有结果已保存到 Q1-test 文件夹")
     print("=" * 70)
 
 
 
-def save_optimal_route(route: List[int], scenario: str, crowd_type: str, 
+def save_optimal_route(route: List[int], result: Dict, scenario: str, crowd_type: str,
                       algorithm: str, output_dir: str):
     """
-    保存最优路径供Q2使用
-    
+    保存最优路径供Q2使用（修正版）
+
+    修正：保存实际执行的路径（visited_projects）和完整的timeline
+    而不是理想的26个项目计划
+
     保存格式：JSON（便于跨语言读取）
     保存位置：Q1-test/routes/route_{algorithm}_{scenario}_{crowd_type}.json
     """
     import json
-    
+
     routes_dir = os.path.join(output_dir, 'routes')
     os.makedirs(routes_dir, exist_ok=True)
-    
+
     filename = f"route_{algorithm}_{scenario}_{crowd_type}.json"
     filepath = os.path.join(routes_dir, filename)
-    
-    # 保存为JSON格式
+
+    # 保存实际执行的路径和timeline
     route_data = {
         'algorithm': algorithm,
         'scenario': scenario,
         'crowd_type': crowd_type,
-        'route': route,
-        'route_length': len(route)
+        'planned_route': route,  # 原始计划路径（26个项目）
+        'executed_route': result['visited_projects'],  # 实际执行路径（10个左右）
+        'timeline': result['timeline_log'],  # 完整的时间线
+        'final_score': result['final_score'],
+        'total_utility': result['total_utility'],
+        'visited_count': result['visited_count'],
+        'total_time': result['total_time']
     }
-    
+
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(route_data, f, ensure_ascii=False, indent=2)
-    
+
     print(f"✓ 最优路径已保存: {filepath}")
+    print(f"  计划路径: {len(route)} 个项目")
+    print(f"  实际执行: {result['visited_count']} 个项目")
 
 if __name__ == "__main__":
     main()

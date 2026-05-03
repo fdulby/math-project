@@ -29,6 +29,11 @@ from q1_final_show_fixed import (
 
 def simulated_annealing(project_ids: List[int], distance_matrix: np.ndarray,
                        project_info: Dict, **kwargs) -> Tuple[List[int], Dict]:
+    """模拟退火算法（固定随机种子以保证结果可复现）"""
+    # 固定随机种子，确保每次运行结果一致
+    random.seed(42)
+    np.random.seed(42)
+
     current_route = random.sample(project_ids, len(project_ids))
     current_result = evaluate_route(current_route, distance_matrix, project_info, **kwargs)
     current_score = current_result['final_score']
@@ -72,6 +77,11 @@ def simulated_annealing(project_ids: List[int], distance_matrix: np.ndarray,
 
 def genetic_algorithm(project_ids: List[int], distance_matrix: np.ndarray,
                      project_info: Dict, **kwargs) -> Tuple[List[int], Dict]:
+    """遗传算法（固定随机种子以保证结果可复现）"""
+    # 固定随机种子，确保每次运行结果一致
+    random.seed(42)
+    np.random.seed(42)
+
     population_size = CONFIG.GA_POPULATION_SIZE
     generations = CONFIG.GA_GENERATIONS
 
@@ -131,6 +141,11 @@ def genetic_algorithm(project_ids: List[int], distance_matrix: np.ndarray,
 
 def ant_colony_optimization(project_ids: List[int], distance_matrix: np.ndarray,
                            project_info: Dict, **kwargs) -> Tuple[List[int], Dict]:
+    """蚁群算法（固定随机种子以保证结果可复现）"""
+    # 固定随机种子，确保每次运行结果一致
+    random.seed(42)
+    np.random.seed(42)
+
     n = len(project_ids)
     pheromone = np.ones((n, n))
 
@@ -259,6 +274,11 @@ def run_single_case(crowd_type: str, date_type: str, algorithm_name: str,
         visited, project_info_copy, best_result['timeline_log'],
         crowd_type, date_type, route_map_path
     )
+
+    # 保存JSON路径文件供Q2使用
+    base_output_dir = os.path.dirname(output_dir)  # 获取Q1-test目录
+    save_optimal_route_batch(best_route, best_result, date_type, crowd_type,
+                            algorithm_name, base_output_dir)
 
     return {
         'algorithm': algorithm_name,
@@ -420,6 +440,42 @@ def generate_algorithm_comparison(all_results: List[Dict], output_dir: str):
     print("✓ 算法横向对比图已保存")
 
 
+
+def save_optimal_route_batch(route: List[int], result: Dict, scenario: str, crowd_type: str,
+                             algorithm: str, output_dir: str):
+    """
+    批量运行时保存最优路径供Q2使用
+    
+    保存格式：JSON
+    保存位置：Q1-test/routes/route_{algorithm}_{scenario}_{crowd_type}.json
+    """
+    import json
+    
+    routes_dir = os.path.join(output_dir, 'routes')
+    os.makedirs(routes_dir, exist_ok=True)
+    
+    filename = f"route_{algorithm}_{scenario}_{crowd_type}.json"
+    filepath = os.path.join(routes_dir, filename)
+    
+    # 保存实际执行的路径和timeline
+    route_data = {
+        'algorithm': algorithm,
+        'scenario': scenario,
+        'crowd_type': crowd_type,
+        'planned_route': route,  # 原始计划路径（26个项目）
+        'executed_route': result['visited_projects'],  # 实际执行路径
+        'timeline': result['timeline_log'],  # 完整的时间线
+        'final_score': result['final_score'],
+        'total_utility': result['total_utility'],
+        'visited_count': result['visited_count'],
+        'total_time': result['total_time']
+    }
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(route_data, f, ensure_ascii=False, indent=2)
+    
+    print(f"✓ 最优路径已保存: {filepath}")
+
 def main():
     print("\n" + "=" * 70)
     print(" " * 10 + "迪士尼乐园路线优化系统 - 全量批量运行")
@@ -552,3 +608,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
